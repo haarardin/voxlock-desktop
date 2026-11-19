@@ -1,0 +1,17 @@
+# Python and local configuration
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+*.log
+.env
+
+# Audio / downloaded models are user-local, never commit them
+*.wav
+*.flac
+*.onnx
+*.safetensors
