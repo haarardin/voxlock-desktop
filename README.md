@@ -44,7 +44,9 @@ voxlock download
 
 The virtual microphone is only available while processing is running.
 It uses PulseAudio-compatible modules available through PipeWire. No root
-permissions are needed to run the application.
+permissions are needed to run the application. You can cancel startup
+while the model is loading, although an in-progress download may need
+to finish before the worker exits.
 
 ## Windows 10/11
 
@@ -69,10 +71,11 @@ cable *playback* endpoint under **Output** (usually **CABLE Input (VB-Audio
 Virtual Cable)**). In the calling application select the virtual cable
 *recording* endpoint (usually **CABLE Output (VB-Audio Virtual Cable)**).
 
-**Do not** choose speakers or headphones as the output; this can cause
-feedback or send your microphone through the speakers. Device names differ
-by driver and Windows host API. VB-CABLE is not bundled or installed
-by VoxLock Desktop.
+For safety, VoxLock Desktop only lists recognized **virtual cable**
+playback endpoints; physical speakers and headphones are intentionally
+excluded from the output selector. If no virtual output is found, install
+and activate VB-CABLE first. Device names differ by driver and Windows
+host API. VB-CABLE is not bundled or installed by VoxLock Desktop.
 
 ## Voice selection and privacy
 
