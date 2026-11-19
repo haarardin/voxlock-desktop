@@ -70,6 +70,17 @@ def list_outputs() -> list[Device]:
     return []
 
 
+def is_virtual_cable_output(name: str) -> bool:
+    """Avoid routing private microphone audio to physical speakers by default."""
+    lower = name.casefold()
+    return any(phrase in lower for phrase in (
+        "cable input", "cable-a input", "cable-b input",
+        "vb-audio", "voicemeeter input", "voicemeeter aux input",
+        "voicemeeter vaio3 input", "virtual audio cable",
+        "virtual cable", "vac line", "virtual input",
+    ))
+
+
 def _windows_devices(direction: str) -> list[Device]:
     try:
         import sounddevice as sd
@@ -82,6 +93,8 @@ def _windows_devices(direction: str) -> list[Device]:
     result = []
     for index, item in enumerate(devices):
         if item[f"max_{direction}_channels"] < 1:
+            continue
+        if direction == "output" and not is_virtual_cable_output(item["name"]):
             continue
         api = hostapis[item["hostapi"]]["name"]
         result.append(Device(str(index), f"{item['name']}  [{api}]"))
@@ -215,6 +228,14 @@ class WindowsSession:
     def open(self) -> None:
         import sounddevice as sd
 
+        if self.output is not None:
+            target = sd.query_devices(self.output)
+            if (target["max_output_channels"] < 1
+                    or not is_virtual_cable_output(target["name"])):
+                raise RuntimeError(
+                    "Select a virtual cable playback endpoint (e.g. CABLE Input), "
+                    "not speakers or headphones."
+                )
         self.input_rate = int(round(sd.query_devices(self.microphone)["default_samplerate"])) or 48000
         self.to_model = soxr.ResampleStream(
             self.input_rate, SAMPLE_RATE, 1, dtype="float32", quality="LQ"
