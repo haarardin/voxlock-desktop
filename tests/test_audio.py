@@ -28,8 +28,8 @@ def test_fifo_overflow_drops_oldest_block():
     queue = AudioFIFO(max_samples=4)
     queue.push(np.array([1, 2, 3], dtype=np.float32))
     queue.push(np.array([4, 5, 6], dtype=np.float32))
-    assert queue.dropped == 3
-    assert queue.pop(4).tolist() == [4, 5, 6, 0]
+    assert queue.dropped == 2
+    assert queue.pop(4).tolist() == [3, 4, 5, 6]
 
 
 def test_profile_location_is_user_private():
@@ -43,3 +43,24 @@ def test_pulse_frame_reader_handles_short_reads():
         def read(self, n):
             return next(self.parts, b"")
     assert _read_exact(Stream(), 6) == b"abcdef"
+
+def test_fifo_preserves_tail_when_large_block_arrives():
+    queue = AudioFIFO(max_samples=4)
+    queue.push(np.arange(8, dtype=np.float32))
+    assert queue.dropped == 4
+    assert queue.size == 4
+    assert queue.pop(4).tolist() == [4, 5, 6, 7]
+
+
+def test_private_recordings_are_restricted(tmp_path):
+    import os
+    import stat
+    import soundfile as sf
+    from voxlock_desktop.engine import write_private_wav
+    path = tmp_path / "profiles" / "voice.wav"
+    write_private_wav(path, np.full(640, 0.5, dtype=np.float32))
+    audio, rate = sf.read(path)
+    assert rate == 16000
+    assert len(audio) == 640
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
