@@ -31,6 +31,19 @@ def profile_file() -> Path:
     return data_directory() / "profiles" / "my_voice.wav"
 
 
+def write_private_wav(path: Path, audio: np.ndarray) -> None:
+    """Keep speaker embeddings/reference voice audio private to this OS user."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            sf.write(handle, audio, SAMPLE_RATE, format="WAV", subtype="PCM_16")
+    except Exception:
+        raise
+    if os.name == "posix":
+        os.chmod(path, 0o600)
+
+
 def level_db(samples: np.ndarray) -> float:
     if len(samples) == 0:
         return -80.0
@@ -52,16 +65,23 @@ class AudioFIFO:
         x = np.asarray(data, dtype=np.float32).reshape(-1).copy()
         if not len(x):
             return
-        if len(x) > self.max_samples:
-            self.dropped += len(x) - self.max_samples
-            x = x[-self.max_samples:]
         with self.lock:
+            if len(x) > self.max_samples:
+                self.dropped += len(x) - self.max_samples
+                x = x[-self.max_samples:]
             self.chunks.append(x)
             self.size += len(x)
-            while self.size > self.max_samples:
-                old = self.chunks.popleft()
-                self.size -= len(old)
-                self.dropped += len(old)
+            excess = self.size - self.max_samples
+            while excess > 0:
+                old = self.chunks[0]
+                n = min(excess, len(old))
+                if n == len(old):
+                    self.chunks.popleft()
+                else:
+                    self.chunks[0] = old[n:]
+                self.size -= n
+                self.dropped += n
+                excess -= n
 
     def pop(self, count: int) -> np.ndarray:
         out = np.zeros(count, dtype=np.float32)
@@ -117,8 +137,7 @@ class EnrollmentWorker(QThread):
             if level_db(audio) < -48:
                 raise ValueError("Voice sample is too quiet. Move closer and try again.")
             path = profile_file()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            sf.write(str(path), audio, SAMPLE_RATE, subtype="PCM_16")
+            write_private_wav(path, audio)
             self.progress.emit(100)
             self.success.emit(str(path))
         except Exception as exc:
@@ -203,7 +222,6 @@ class IsolationWorker(QThread):
             self.ready.emit("VoxLock Microphone" if platform.system() == "Linux"
                             else "VB-CABLE: choose CABLE Output as microphone")
             frames = 0
-            start = time.monotonic()
             while not self.cancelled.is_set():
                 pcm = self.session.read()
                 t0 = time.monotonic()
@@ -255,6 +273,6 @@ class IsolationWorker(QThread):
         # Model is delayed ~24ms: retain the actual result, do not fake alignment.
         raw_path = directory / "before.wav"
         clean_path = directory / "after.wav"
-        sf.write(str(raw_path), source, SAMPLE_RATE, subtype="PCM_16")
-        sf.write(str(clean_path), target, SAMPLE_RATE, subtype="PCM_16")
+        write_private_wav(raw_path, source)
+        write_private_wav(clean_path, target)
         self.preview_saved.emit(str(raw_path), str(clean_path))
