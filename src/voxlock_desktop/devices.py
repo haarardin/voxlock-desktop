@@ -134,13 +134,13 @@ class LinuxSession:
                 ))
                 self.playback = subprocess.Popen(
                     ["pacat", "--playback", "--raw", "--format=float32le",
-                     "--rate=16000", "--channels=1", f"--device={SINK_NAME}"],
+                     "--rate=16000", "--channels=1", "--latency-msec=50", f"--device={SINK_NAME}"],
                     stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE, bufsize=0,
                 )
             self.capture = subprocess.Popen(
                 ["parec", "--record", "--raw", "--format=float32le",
-                 "--rate=16000", "--channels=1", f"--device={self.microphone}"],
+                 "--rate=16000", "--channels=1", "--latency-msec=50", f"--device={self.microphone}"],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
             )
         except Exception:
