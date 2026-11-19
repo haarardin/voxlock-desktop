@@ -165,7 +165,7 @@ class MainWindow(QMainWindow):
 
     def _dashboard(self) -> QWidget:
         wrapper = self._scroll_page()
-        layout = wrapper.layout()
+        layout = wrapper.widget().layout()
 
         hero, h = card(hero=True)
         titlebar = QHBoxLayout()
