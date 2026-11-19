@@ -243,6 +243,7 @@ class MainWindow(QMainWindow):
         preview, pv = card("Проверка качества")
         self.preview_button = button("◉  Записать сравнение (5 секунд)")
         self.preview_button.clicked.connect(self.request_preview)
+        self.preview_button.setEnabled(False)
         pv.addWidget(self.preview_button)
         self.before_button = button("▶  Открыть исходную запись")
         self.after_button = button("▶  Открыть обработанную запись")
@@ -498,9 +499,11 @@ class MainWindow(QMainWindow):
         self.record_button.setText("●  Перезаписать образец (8 секунд)")
         self.record_progress.hide()
         self.recorder = None
+        if self._quit_requested:
+            self._finish_quit_if_idle()
 
     def toggle_processing(self):
-        if self.worker and self.worker.isRunning():
+        if self.worker is not None:
             self.stop_processing()
         else:
             self.start_processing()
@@ -537,9 +540,9 @@ class MainWindow(QMainWindow):
         self.worker.performance.connect(self.performance.setText)
         self.worker.preview_saved.connect(self._preview_saved)
         self.worker.error.connect(lambda msg: self.notify("Ошибка обработки: " + msg, error=True))
-        self.worker.stopped.connect(self._processing_stopped)
         self.worker.finished.connect(self._worker_finished)
-        self.start_button.setEnabled(False)
+        self.start_button.setText("■  Отменить запуск")
+        self.start_button.setEnabled(True)
         self.record_button.setEnabled(False)
         self.input_combo.setEnabled(False)
         self.output_combo.setEnabled(False)
@@ -550,6 +553,8 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def _processing_ready(self, source: str):
+        if self.worker is None or self.worker.cancelled.is_set():
+            return
         self.status.setText("●  Защита включена")
         self.status.setObjectName("ok")
         self.status.style().unpolish(self.status)
@@ -563,7 +568,7 @@ class MainWindow(QMainWindow):
         self.notify("Активно. В приложениях выберите: " + source)
 
     def stop_processing(self):
-        if self.worker and self.worker.isRunning():
+        if self.worker is not None:
             self.start_button.setEnabled(False)
             self.status.setText("◌  Остановка...")
             self.worker.stop()
@@ -587,8 +592,9 @@ class MainWindow(QMainWindow):
 
     def _worker_finished(self):
         self.worker = None
+        self._processing_stopped()
         if self._quit_requested:
-            QApplication.instance().quit()
+            self._finish_quit_if_idle()
 
     def _levels(self, before: float, after: float):
         self.input_graph.push(before)
@@ -625,16 +631,20 @@ class MainWindow(QMainWindow):
         self.message.style().unpolish(self.message)
         self.message.style().polish(self.message)
 
+    def _finish_quit_if_idle(self):
+        worker_running = self.worker is not None and self.worker.isRunning()
+        recorder_running = self.recorder is not None and self.recorder.isRunning()
+        if not worker_running and not recorder_running:
+            QApplication.instance().quit()
+
     def quit_app(self):
         self._quit_requested = True
+        self.hide()
         if self.recorder and self.recorder.isRunning():
             self.recorder.cancel()
-            self.recorder.wait(3000)
-        if self.worker and self.worker.isRunning():
+        if self.worker:
             self.worker.stop()
-            self.hide()
-            return  # finish callback exits after worker closes
-        QApplication.instance().quit()
+        self._finish_quit_if_idle()
 
     def closeEvent(self, event):
         if not self._quit_requested and self.tray and self.tray.isVisible():
@@ -643,10 +653,7 @@ class MainWindow(QMainWindow):
                 "VoxLock Desktop", "Приложение продолжает работать в трее.",
                 QSystemTrayIcon.Information, 1500
             )
-            event.ignore()
         else:
             self.quit_app()
-            if self.worker and self.worker.isRunning():
-                event.ignore()
-            else:
-                event.accept()
+        # The window stays alive until the worker QThreads have actually finished.
+        event.ignore()
